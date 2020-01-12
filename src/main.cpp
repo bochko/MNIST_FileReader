@@ -1,6 +1,7 @@
 #include <iostream>
 #include <vector>
 #include <fstream>
+#include <map>
 
 #define MNIST_IMAGE_ROW_COUNT   28
 #define MNIST_IMAGE_COL_COUNT   28
@@ -11,6 +12,24 @@ typedef struct {
     std::vector<std::uint32_t> dimension_sizes;
     std::vector<std::uint8_t*> data;
 } MnistData;
+
+typedef enum {
+    MNIST_UNSIGNED_BYTE = 0x08,
+    MNIST_SIGNED_BYTE = 0x09,
+    MNIST_SHORT = 0x0B,
+    MNIST_INT = 0x0C,
+    MNIST_FLOAT = 0x0D,
+    MNIST_DOUBLE = 0x0E
+} MnistDatatype;
+
+const static std::map<MnistDatatype, uint8_t> trivial_sizes = {
+        {MNIST_UNSIGNED_BYTE,1},
+        {MNIST_SIGNED_BYTE,1},
+        {MNIST_SHORT,2},
+        {MNIST_INT, 4},
+        {MNIST_FLOAT,4},
+        {MNIST_DOUBLE,8}
+};
 
 bool arch_is_lsb(void)
 {
@@ -25,31 +44,43 @@ std::uint32_t revb_int32(std::uint32_t val)
     return val;
 }
 
-
+bool open_ifstream(std::ifstream& file, std::string filepath)
+{
+    bool open = true;
+    try {
+        file.open(filepath);
+        if(!file.is_open())
+        {
+            open = false;
+        }
+    } catch (std::exception& e)
+    {
+        std::cerr << e.what();
+        open = false;
+    }
+    return open;
+}
 
 void load_dataset(MnistData& data, std::string which)
 {
     std::cout << "Enter " << which << " dataset filepath:" << std::endl;
     std::string training_set_path;
     std::getline(std::cin, training_set_path);
-
     std::ifstream file;
-    file.open(training_set_path);
-    // read magic
-    file.read((char*) &data.magic, sizeof(std::uint32_t));
-    // read sample count
-    file.read((char*) &data.sample_count, sizeof(std::uint32_t));
-    // interpret magic number
-    if(arch_is_lsb())
+    if(!open_ifstream(file, training_set_path))
+    {
+        return;
+    }
+    file.read((char*) &data.magic, sizeof(std::uint32_t)); // read magic
+    file.read((char*) &data.sample_count, sizeof(std::uint32_t)); // read sample count
+    if(arch_is_lsb()) // interpret magic number
     {
         data.magic = revb_int32(data.magic);
         data.sample_count = revb_int32(data.sample_count);
     }
-    // extract dimensions
-    uint32_t dimension_mask = 0x000000FF;
+    uint32_t dimension_mask = 0x000000FF; // extract dimensions
     uint32_t dimension_count = (data.magic & dimension_mask) - 1U; // sample_size is always first dimension
-
-    for(int i = 0; i < dimension_count; i++)
+    for(uint32_t i = 0; i < dimension_count; i++)
     {
         uint32_t dimension_size;
         file.read((char*) &dimension_size, sizeof(std::uint32_t));
@@ -62,15 +93,14 @@ void load_dataset(MnistData& data, std::string which)
 
     // calculate data memory footprint per sample
     uint32_t memory_footprint = 1;
-    for(int i = 0; i < data.dimension_sizes.size(); i++)
+    for(uint32_t i = 0; i < data.dimension_sizes.size(); i++)
     {
         memory_footprint *= data.dimension_sizes.at(i);
     }
     // extract data
-    for (int i = 0; i < data.sample_count; i++)
+    for (uint32_t i = 0; i < data.sample_count; i++)
     {
-
-        uint8_t* sample = new uint8_t[memory_footprint];
+        auto* sample = new uint8_t[memory_footprint];
         file.read((char*) sample, memory_footprint);
         data.data.push_back(sample);
     }
