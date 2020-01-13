@@ -7,7 +7,15 @@
 
 int main() {
     mnist::mnist_data images;
-    if(!mnist::load_dataset(images, "images")) return 1;
+    // print prompt
+    std::cout << "Enter images dataset filepath:" << std::endl;
+    std::string filepath;
+    std::getline(std::cin, filepath);
+    if(!mnist::load_dataset(images, filepath)) return 1;
+
     mnist::mnist_data labels;
-    if(!mnist::load_dataset(labels, "labels")) return 1;
+    // print prompt
+    std::cout << "Enter images dataset filepath:" << std::endl;
+    std::getline(std::cin, filepath);
+    if(!mnist::load_dataset(labels, filepath)) return 1;
 }

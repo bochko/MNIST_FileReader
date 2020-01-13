@@ -7,11 +7,17 @@
 
 #include "mnist.h"
 
-static bool open_ifstream(std::ifstream &file, std::string filepath) noexcept;
+static bool open_ifstream(std::ifstream &file, const std::string &filepath) noexcept;
 
-static bool read_ifstream_safe(std::ifstream &file, char *destination, std::size_t size) noexcept;
+static bool read_ifstream(std::ifstream &file, char *destination, std::size_t size) noexcept;
 
-const static std::map<mnist::mnist_datatype, uint8_t> trivial_sizes = {
+static std::uint32_t get_dimensions_from_magic(const std::uint32_t &magic) noexcept;
+
+static std::uint32_t get_datatype_from_magic(const std::uint32_t &magic) noexcept;
+
+void correct_if_lsb(std::uint32_t *&val) noexcept;
+
+const static std::map<mnist::mnist_datatype, uint8_t> datatype_widths = {
         {mnist::MNIST_UNSIGNED_BYTE, 1},
         {mnist::MNIST_SIGNED_BYTE,   1},
         {mnist::MNIST_SHORT,         2},
@@ -33,7 +39,7 @@ std::uint32_t mnist::util::revb_uint32(std::uint32_t val)
     return val;
 }
 
-static bool open_ifstream(std::ifstream &file, std::string filepath) noexcept
+static bool open_ifstream(std::ifstream &file, const std::string &filepath) noexcept
 {
     bool open = true;
     try
@@ -45,27 +51,30 @@ static bool open_ifstream(std::ifstream &file, std::string filepath) noexcept
         }
     } catch (std::exception &e)
     {
+        std::cerr << "Could not open file at \"" << filepath << "\"" << std::endl;
         std::cerr << e.what();
         open = false;
     }
     return open;
 }
 
-static bool read_ifstream_safe(std::ifstream &file, char *destination, std::size_t size) noexcept
+static bool read_ifstream(std::ifstream &file, char *destination, std::size_t size) noexcept
 {
     bool read = true;
+    auto tell = file.tellg();
     try
     {
         file.read(destination, size);
     } catch (std::exception &e)
     {
+        std::cerr << "Could not read stream at byte " << tell << std::endl;
         std::cerr << e.what();
         read = false;
     }
     return read;
 }
 
-std::uint32_t get_dimensions_from_magic(const std::uint32_t& magic)
+static std::uint32_t get_dimensions_from_magic(const std::uint32_t &magic) noexcept
 {
     constexpr static std::uint32_t dimension_mask = 0x000000FF;
     // sample_size is always first dimension so we need
@@ -74,7 +83,7 @@ std::uint32_t get_dimensions_from_magic(const std::uint32_t& magic)
     return dimension_count;
 }
 
-std::uint32_t get_datatype_from_magic(const std::uint32_t& magic)
+static std::uint32_t get_datatype_from_magic(const std::uint32_t &magic) noexcept
 {
     constexpr static std::uint32_t datatype_mask = 0x0000000F; // extract datatype
     // maximum datatype identifier is 0xE
@@ -82,52 +91,50 @@ std::uint32_t get_datatype_from_magic(const std::uint32_t& magic)
     return datatype;
 }
 
-void correct_if_lsb(std::uint32_t* val)
+void correct_if_lsb(std::uint32_t *val) noexcept
 {
-    if(mnist::util::architecture_is_lsb())
+    if (mnist::util::architecture_is_lsb())
     {
         *val = mnist::util::revb_uint32(*val);
     }
 }
 
-bool mnist::load_dataset(mnist_data &data, std::string which)
+bool mnist::load_dataset(mnist_data &data, const std::string &filepath)
 {
-    // print prompt
-    std::cout << "Enter " << which << " dataset filepath:" << std::endl;
-    std::string training_set_path;
-    std::getline(std::cin, training_set_path);
-    // open file @ filepath if possible, if not, return
     std::ifstream file;
-    if (!open_ifstream(file, training_set_path))
-    {
-        std::cerr << "Could not open file at \"" << training_set_path << "\"" << std::endl;
-        return false;
-    }
+    std::uint32_t dimension_count;
+    std::uint32_t dimension_size;
+    std::uint32_t datatype;
+    std::uint32_t memory_footprint;
+    std::uint32_t i;
+    // open file @ filepath if possible, if not, return
+    if (!open_ifstream(file, filepath))
+    { return false; }
     // read magic
-    if (!(read_ifstream_safe(file, reinterpret_cast<char *>(&data.magic),
-                             sizeof(std::uint32_t))))
-        return false;
+    if (!(read_ifstream(file, reinterpret_cast<char *>(&data.magic),
+                        sizeof(std::uint32_t))))
+    { return false; }
     // read sample count
-    if (!(read_ifstream_safe(file, reinterpret_cast<char *>(&data.sample_count),
-                             sizeof(std::uint32_t))))
-        return false;
-    // interpret magic number
+    if (!(read_ifstream(file, reinterpret_cast<char *>(&data.sample_count),
+                        sizeof(std::uint32_t))))
+    { return false; }
+    // correct endianness in magic number if needed
     correct_if_lsb(&data.magic);
     correct_if_lsb(&data.sample_count);
-    uint32_t dimension_count = get_dimensions_from_magic(data.magic);
-    for (uint32_t i = 0; i < dimension_count; i++)
+    dimension_count = get_dimensions_from_magic(data.magic);
+    for (i = 0; i < dimension_count; i++)
     {
-        uint32_t dimension_size;
-        if (!(read_ifstream_safe(file, reinterpret_cast<char *>(&dimension_size), sizeof(std::uint32_t))))
-            return false;
+        if (!(read_ifstream(file, reinterpret_cast<char *>(&dimension_size),
+                            sizeof(std::uint32_t))))
+        { return false; }
         correct_if_lsb(&dimension_size);
         data.dimension_sizes.push_back(dimension_size);
     }
-    uint32_t datatype = get_datatype_from_magic(data.magic);
-    if (trivial_sizes.find(static_cast<mnist_datatype>(datatype)) != trivial_sizes.end())
+    datatype = get_datatype_from_magic(data.magic);
+    if (datatype_widths.find(static_cast<mnist_datatype>(datatype)) != datatype_widths.end())
     {
         data.datatype = static_cast<mnist_datatype>(datatype);
-        data.width = trivial_sizes.at(static_cast<mnist_datatype>(datatype));
+        data.width = datatype_widths.at(static_cast<mnist_datatype>(datatype));
     } else
     {
         data.datatype = MNIST_DATATYPE_NONE;
@@ -135,18 +142,18 @@ bool mnist::load_dataset(mnist_data &data, std::string which)
         return false;
     }
     // calculate data memory footprint per sample
-    uint32_t memory_footprint = 1;
-    for (std::uint32_t dimension_size : data.dimension_sizes)
+    memory_footprint = 1;
+    for (auto ds : data.dimension_sizes)
     {
-        memory_footprint *= dimension_size;
+        memory_footprint *= ds;
     }
     memory_footprint *= data.width;
-    // extract data
-    for (uint32_t i = 0; i < data.sample_count; i++)
+    // extract binary data from file
+    for (i = 0; i < data.sample_count; i++)
     {
         auto *sample = new uint8_t[memory_footprint];
-        if (!(read_ifstream_safe(file, reinterpret_cast<char *>(sample), memory_footprint)))
-            return false;
+        if (!(read_ifstream(file, reinterpret_cast<char *>(sample), memory_footprint)))
+        { return false; }
         data.data.push_back(sample);
     }
     return true;

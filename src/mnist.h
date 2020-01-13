@@ -24,14 +24,12 @@ namespace mnist {
         std::vector<std::uint8_t *> data;
     } mnist_data;
 
+    bool load_dataset(mnist_data &data, const std::string& filepath);
+
     namespace util {
         bool architecture_is_lsb();
         std::uint32_t revb_uint32(std::uint32_t val);
     }
-
-    bool load_dataset(mnist_data &data, std::string which);
 }
-
-
 
 #endif //MNIST_MACHINELEARNING_MNIST_H
