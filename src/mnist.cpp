@@ -65,6 +65,31 @@ static bool read_ifstream_safe(std::ifstream &file, char *destination, std::size
     return read;
 }
 
+std::uint32_t get_dimensions_from_magic(const std::uint32_t& magic)
+{
+    constexpr static std::uint32_t dimension_mask = 0x000000FF;
+    // sample_size is always first dimension so we need
+    // to subtract one from total count
+    std::uint32_t dimension_count = (magic & dimension_mask) - 1U;
+    return dimension_count;
+}
+
+std::uint32_t get_datatype_from_magic(const std::uint32_t& magic)
+{
+    constexpr static std::uint32_t datatype_mask = 0x0000000F; // extract datatype
+    // maximum datatype identifier is 0xE
+    std::uint32_t datatype = (magic >> 8u) & datatype_mask;
+    return datatype;
+}
+
+void correct_if_lsb(std::uint32_t* val)
+{
+    if(mnist::util::architecture_is_lsb())
+    {
+        *val = mnist::util::revb_uint32(*val);
+    }
+}
+
 bool mnist::load_dataset(mnist_data &data, std::string which)
 {
     // print prompt
@@ -87,27 +112,18 @@ bool mnist::load_dataset(mnist_data &data, std::string which)
                              sizeof(std::uint32_t))))
         return false;
     // interpret magic number
-    if (util::architecture_is_lsb())
-    {
-        data.magic = util::revb_uint32(data.magic);
-        data.sample_count = util::revb_uint32(data.sample_count);
-    }
-    uint32_t dimension_mask = 0x000000FF; // extract dimensions
-    uint32_t dimension_count =
-            (data.magic & dimension_mask) - 1U; // sample_size is always first dimension
+    correct_if_lsb(&data.magic);
+    correct_if_lsb(&data.sample_count);
+    uint32_t dimension_count = get_dimensions_from_magic(data.magic);
     for (uint32_t i = 0; i < dimension_count; i++)
     {
         uint32_t dimension_size;
         if (!(read_ifstream_safe(file, reinterpret_cast<char *>(&dimension_size), sizeof(std::uint32_t))))
             return false;
-        if (util::architecture_is_lsb())
-        {
-            dimension_size = util::revb_uint32(dimension_size);
-        }
+        correct_if_lsb(&dimension_size);
         data.dimension_sizes.push_back(dimension_size);
     }
-    uint32_t datatype_mask = 0x0000000F; // extract datatype
-    uint32_t datatype = (data.magic >> 8u) & datatype_mask;
+    uint32_t datatype = get_datatype_from_magic(data.magic);
     if (trivial_sizes.find(static_cast<mnist_datatype>(datatype)) != trivial_sizes.end())
     {
         data.datatype = static_cast<mnist_datatype>(datatype);
@@ -135,4 +151,3 @@ bool mnist::load_dataset(mnist_data &data, std::string which)
     }
     return true;
 }
-
