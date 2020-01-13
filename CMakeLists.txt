@@ -3,4 +3,4 @@ project(MNIST_MachineLearning)
 
 set(CMAKE_CXX_STANDARD 14)
 
-add_executable(MNIST_MachineLearning src/main.cpp)
+add_executable(MNIST_MachineLearning src/main.cpp src/mnist.cpp src/mnist.h)
