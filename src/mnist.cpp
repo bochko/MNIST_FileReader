@@ -4,6 +4,7 @@
 #include <map>
 #include <iostream>
 #include <fstream>
+#include <sstream>
 
 #include "mnist.h"
 
@@ -24,6 +25,15 @@ const static std::map<mnist::mnist_datatype, uint8_t> datatype_widths = {
         {mnist::MNIST_INT,           4},
         {mnist::MNIST_FLOAT,         4},
         {mnist::MNIST_DOUBLE,        8}
+};
+
+const static std::map<mnist::mnist_datatype, std::string> datatype_names = {
+        {mnist::MNIST_UNSIGNED_BYTE, "Unsigned Byte"},
+        {mnist::MNIST_SIGNED_BYTE,   "Signed Byte"},
+        {mnist::MNIST_SHORT,         "Short Integer"},
+        {mnist::MNIST_INT,           "Integer"},
+        {mnist::MNIST_FLOAT,         "Float"},
+        {mnist::MNIST_DOUBLE,        "Double"}
 };
 
 bool mnist::util::architecture_is_lsb()
@@ -99,7 +109,7 @@ void correct_if_lsb(std::uint32_t *val) noexcept
     }
 }
 
-bool mnist::load_dataset(mnist_data &data, const std::string &filepath)
+bool mnist::dataset_load(mnist_data &data, const std::string &filepath)
 {
     std::ifstream file;
     std::uint32_t dimension_count;
@@ -110,6 +120,8 @@ bool mnist::load_dataset(mnist_data &data, const std::string &filepath)
     // open file @ filepath if possible, if not, return
     if (!open_ifstream(file, filepath))
     { return false; }
+    else
+    { data.filepath_history = filepath; }
     // read magic
     if (!(read_ifstream(file, reinterpret_cast<char *>(&data.magic),
                         sizeof(std::uint32_t))))
@@ -157,4 +169,30 @@ bool mnist::load_dataset(mnist_data &data, const std::string &filepath)
         data.data.push_back(sample);
     }
     return true;
+}
+
+void mnist::dataset_info(mnist::mnist_data &data)
+{
+    std::stringstream ss;
+    std::uint32_t inner_data_size = 1;
+    ss << "{\t" << std::endl;
+    ss << "\t" << "Dataset filepath: \"" << data.filepath_history << std::endl;
+    ss << "\t" << "File magic: " << std::hex << data.magic << std::dec <<  std::endl;
+    ss << "\t" << "Fundamental data width: " << static_cast<std::uint32_t>(data.width) << std::endl;
+    ss << "\t" << "Fundamental data type: " << datatype_names.at(data.datatype) << std::endl;
+    ss << "\t" << "Sample count: " << data.sample_count << std::endl;
+    if(!data.dimension_sizes.empty())
+    {
+        ss << "\t" << "Inner data dimensions: ";
+        for(auto& dimension : data.dimension_sizes)
+        {
+            ss << "[" << dimension << "]";
+            inner_data_size *= dimension;
+        }
+        ss << std::endl;
+    }
+    ss << "\t" << "Data: {... " << static_cast<std::uint32_t>(data.width) * inner_data_size
+                            * data.sample_count<< " bytes ...}" << std::endl;
+    ss << "}\t" << std::endl;
+    std::cout << ss.str();
 }

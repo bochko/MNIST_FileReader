@@ -16,6 +16,7 @@ namespace mnist {
     } mnist_datatype;
 
     typedef struct {
+        std::string filepath_history;
         std::uint32_t magic;
         mnist_datatype datatype;
         std::uint8_t width;
@@ -24,7 +25,8 @@ namespace mnist {
         std::vector<std::uint8_t *> data;
     } mnist_data;
 
-    bool load_dataset(mnist_data &data, const std::string& filepath);
+    bool dataset_load(mnist_data &data, const std::string& filepath);
+    void dataset_info(mnist_data &data);
 
     namespace util {
         bool architecture_is_lsb();
